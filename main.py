@@ -55,7 +55,7 @@ def main():
 
 if __name__ == "__main__":
     main()
-      from analysis import convergence_study, plot_error_heatmap
+from analysis import convergence_study, plot_error_heatmap
     
     print("\n📈 Generating Convergence and Heatmap analysis...")
     # Plot heatmap
