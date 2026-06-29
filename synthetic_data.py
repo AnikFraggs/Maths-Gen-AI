@@ -1,110 +1,135 @@
-
+# synthetic_data.py
 import numpy as np
 import pandas as pd
 from scipy import integrate
+import sympy as sp
+import mpmath
 from methods import METHODS
-from feature_extractor import extract_features
 from tqdm import tqdm
 
-# Define a pool of atomic functions and operations
-def safe_log(x):
-    return np.log(np.abs(x) + 1e-3)
+# Define symbolic variables and safe numpy mappings
+x_sym = sp.symbols('x')
+SAFE_DICT = {
+    'sin': np.sin, 'cos': np.cos, 'tan': np.tan, 'exp': np.exp,
+    'log': np.log, 'sqrt': np.sqrt, 'Abs': np.abs, 'pi': np.pi, 'E': np.e
+}
 
-def safe_div(x):
-    return 1.0 / (np.power(x, 2) + 1e-3)
-
-def safe_exp(x):
-    # Prevent overflow by clipping extreme values
-    return np.exp(np.clip(x, -10, 10))
-
-def generate_random_function():
-    """Generates highly complex, nested mathematical functions."""
-    a, b = np.random.uniform(-3, 3, 2)
-    if a > b: a, b = b, a
+def generate_sympy_function(depth=3):
+    """Generates deeply nested mathematical functions using SymPy."""
+    # Base atoms
+    atoms = [x_sym, x_sym**2, sp.sin(x_sym), sp.cos(x_sym), sp.exp(x_sym), sp.log(x_sym), sp.sqrt(sp.Abs(x_sym))]
     
-    # Randomly select interval types (some near 0 for singularities, some wide)
-    if np.random.rand() > 0.7:
-        a, b = 0, np.random.uniform(0.5, 3.0) # Force endpoint near 0
+    expr = np.random.choice(atoms)
+    ops = [sp.sin, sp.cos, sp.exp, sp.log, lambda y: y**2, lambda y: sp.sqrt(sp.Abs(y))]
     
-    c1, c2, c3 = np.random.uniform(-2, 2, 3)
-    
-    # Atomic building blocks
-    components = [
-        lambda x: x,
-        lambda x: x**2,
-        lambda x: x**3,
-        lambda x: np.sin(c1 * x),
-        lambda x: np.cos(c2 * x),
-        lambda x: safe_exp(x),
-        lambda x: safe_log(x),
-        lambda x: safe_div(x),
-        lambda x: np.sqrt(np.abs(x)),
-        lambda x: 1.0 / (np.sqrt(np.abs(x - c3)) + 1e-3) # Sharp singularity
-    ]
-    
-    # Randomly select 2 or 3 components
-    n_comp = np.random.randint(2, 4)
-    chosen = np.random.choice(components, n_comp, replace=False)
-    
-    # Combine them: either multiply, add, or nest them
-    op_type = np.random.randint(0, 3)
-    
-    if op_type == 0: # Product (e.g., sin(x) * exp(x) * log(x))
-        f = lambda x: np.prod([c(x) for c in chosen], axis=0)
-    elif op_type == 1: # Nested (e.g., sin(exp(log(x))))
-        f = lambda x: x
-        for c in reversed(chosen):
-            f = lambda x, prev_f=f, curr_c=c: curr_c(prev_f(x))
-    else: # Sum of products
-        f = lambda x: chosen[0](x) + chosen[1](x)
-        if n_comp == 3:
-            f = lambda x: f(x) * chosen[2](x)
+    # Nest operations deeply
+    for _ in range(depth):
+        op = np.random.choice(ops)
+        try:
+            expr = op(expr)
+        except:
+            pass
             
-    return f, a, b
+    # Multiply by another random base function to create composites
+    expr2 = np.random.choice(atoms)
+    expr = expr * expr2
+    
+    # Add a rational / singular component sometimes
+    if np.random.rand() > 0.6:
+        c = np.random.uniform(0.1, 2.0)
+        expr = expr / (x_sym**2 + c)
+        
+    return expr
 
-def calculate_exact(f, a, b):
-    """Uses scipy.integrate.quad as the ground truth calculator."""
+def calculate_exact_mpmath(f_lambda, a, b):
+    """Uses mpmath for arbitrary-precision quadrature (The Ultimate Calculator)."""
     try:
-        # Increase limit for complex oscillatory functions
-        val, _ = integrate.quad(f, a, b, limit=200, epsabs=1e-8, epsrel=1e-8)
-        if np.isfinite(val):
-            return val
+        # 15 decimal places of precision
+        mpmath.mp.dps = 15
+        val = mpmath.quad(f_lambda, [a, b], error=True, maxdegree=9)
+        if np.isfinite(float(val[0])) and abs(float(val[0])) < 1e6:
+            return float(val[0])
         return np.nan
     except:
         return np.nan
 
 def generate_synthetic_dataset(n_samples=80000):
-    print(f"Generating {n_samples} EXTREMELY COMPLEX synthetic functions...")
+    print(f"Generating {n_samples} EXTREMELY COMPLEX SymPy functions...")
     data = []
     
     for i in tqdm(range(n_samples)):
-        f, a, b = generate_random_function()
-        exact = calculate_exact(f, a, b)
+        # 1. Generate Symbolic Function
+        expr = generate_sympy_function(depth=np.random.randint(2, 5))
         
-        # Reject if exact integral fails or is too large (overflow)
-        if np.isnan(exact) or abs(exact) > 1e5:
+        # 2. Convert to Numpy function
+        try:
+            f = sp.lambdify(x_sym, expr, modules=[SAFE_DICT, "numpy"])
+        except:
             continue
             
-        # Use 150 samples to extract features to catch high-frequency oscillations
-        feats = extract_features(f, a, b, samples=150)
-        if feats is None:
+        # 3. Generate bounds (some wide, some near 0 for singularities)
+        if np.random.rand() > 0.7:
+            a, b = 0.0, np.random.uniform(0.5, 3.0)
+        else:
+            a, b = np.random.uniform(-3, 0, 2), np.random.uniform(0, 3, 2)
+            if a > b: a, b = b, a
+            
+        # 4. Calculate EXACT calculator value using mpmath
+        exact = calculate_exact_mpmath(f, a, b)
+        if np.isnan(exact):
+            continue
+            
+        # 5. Extract Advanced Features (FFT & High Derivatives)
+        try:
+            samples = 256
+            xx = np.linspace(a + 1e-9, b - 1e-9, samples)
+            yy = np.vectorize(f)(xx)
+            yy = np.nan_to_num(yy, nan=0.0, posinf=1e5, neginf=-1e5)
+            
+            # FFT to find dominant frequency
+            fft_vals = np.abs(np.fft.fft(yy))
+            dominant_freq = np.argmax(fft_vals[1:]) + 1
+            
+            dy = np.gradient(yy, xx)
+            d2y = np.gradient(dy, xx)
+            d4y = np.gradient(d2y, xx)
+            d6y = np.gradient(d4y, xx)
+            
+            feats = {
+                "range_y": float(np.ptp(yy)),
+                "mean_y": float(np.mean(yy)),
+                "std_y": float(np.std(yy)),
+                "max_abs_y": float(np.max(np.abs(yy))),
+                "max_abs_dy": float(np.max(np.abs(dy))),
+                "max_abs_d2y": float(np.max(np.abs(d2y))),
+                "max_abs_d4y": float(np.max(np.abs(d4y))),
+                "max_abs_d6y": float(np.max(np.abs(d6y))),
+                "oscillations": float(np.sum(np.diff(np.sign(dy)) != 0)),
+                "endpoint_left_mag": float(abs(yy[0])),
+                "endpoint_right_mag": float(abs(yy[-1])),
+                "spikiness": float(np.max(np.abs(yy)) / (np.mean(np.abs(yy)) + 1e-12)),
+                "interval_length": float(b - a),
+                "dominant_frequency": float(dominant_freq),
+                "spectral_entropy": float(-np.sum((fft_vals/np.sum(fft_vals)) * np.log(fft_vals/np.sum(fft_vals) + 1e-12))),
+            }
+        except:
             continue
             
         row = {"exact": exact}
         row.update(feats)
         
+        # 6. Run all 10 methods with VERY HIGH resolution (n=2000)
         method_errors = {}
         for mname, mfunc in METHODS.items():
             try:
-                # Increase points for complex functions so methods have a fair chance
                 if mname in ["Romberg", "Adaptive Simpson"]:
                     val = mfunc(f, a, b)
                 elif mname == "Tanh-Sinh":
-                    val = mfunc(f, a, b, h=0.05)
+                    val = mfunc(f, a, b, h=0.02) # Ultra-fine step
                 elif mname == "Bayesian QD":
-                    val = mfunc(f, a, b, n=25)
+                    val = mfunc(f, a, b, n=50)   # More GP points
                 else:
-                    val = mfunc(f, a, b, n=150) # Upgraded from 50 to 150
+                    val = mfunc(f, a, b, n=2000) # Max resolution for grid methods
                     
                 err = abs(val - exact) / (abs(exact) + 1e-12)
                 method_errors[mname] = err
@@ -122,6 +147,6 @@ def generate_synthetic_dataset(n_samples=80000):
         data.append(row)
         
     df = pd.DataFrame(data)
-    df.to_csv("synthetic_dataset_80k_complex.csv", index=False)
-    print(f"✅ Saved {len(df)} valid complex cases to synthetic_dataset_80k_complex.csv")
+    df.to_csv("synthetic_dataset_80k_ultimate.csv", index=False)
+    print(f"✅ Saved {len(df)} ULTRA-COMPLEX cases to synthetic_dataset_80k_ultimate.csv")
     return df
