@@ -57,12 +57,12 @@ if __name__ == "__main__":
     main()
 from analysis import convergence_study, plot_error_heatmap
     
-    print("\n📈 Generating Convergence and Heatmap analysis...")
+print("\n📈 Generating Convergence and Heatmap analysis...")
     # Plot heatmap
-    plot_error_heatmap(df)
+plot_error_heatmap(df)
     
     # Plot convergence for a smooth function
-    convergence_study("sin(x)")
+convergence_study("sin(x)")
     
     # Plot convergence for a spiky function
-    convergence_study("exp(-100*(x-0.5)^2)")
+convergence_study("exp(-100*(x-0.5)^2)")
