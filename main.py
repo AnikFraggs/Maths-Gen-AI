@@ -1,68 +1,57 @@
-from dataset import DATASET
+import pandas as pd
+from benchmark import benchmark
+from ai_model import train_ai_model
+from visualize import plot_dashboard, plot_ai_model_metrics
 from methods import METHODS
-def run_all():
-    print("="*65)
-    print("  NUMERICAL INTEGRATION BENCHMARKING — FULL PIPELINE")
-    print("="*65)
-    print(f"\n  Functions  : {len(DATASET)}")
-    print(f"  Methods    : {len(METHODS)}")
-    print(f"  Total runs : {len(DATASET) * len(METHODS)}\n")
- 
-    # ── Step 1: Benchmark ─────────────────────────────────────────
-    print("─"*65)
-    print("  STEP 1 / 6  Benchmarking all methods × all functions …")
-    print("─"*65)
-    df = benchmark(verbose=True)
-    df.to_csv("integration_results.csv", index=False)
-    print("\n  Results saved → integration_results.csv")
- 
-    # ── Step 2: Summary table ─────────────────────────────────────
-    print("\n" + "─"*65)
-    print("  STEP 2 / 6  Summary table")
-    print("─"*65)
-    summary_table(df)
- 
-    # ── Step 3: Convergence orders ────────────────────────────────
-    print("\n" + "─"*65)
-    print("  STEP 3 / 6  Empirical convergence orders")
-    print("─"*65)
-    compute_orders(df)
- 
-    # ── Step 4: Pattern model ─────────────────────────────────────
-    print("\n" + "─"*65)
-    print("  STEP 4 / 6  Pattern recognition model")
-    print("─"*65)
-    pattern_dict = build_pattern_model(df)
- 
-    # ── Step 5: Plots ─────────────────────────────────────────────
-    print("\n" + "─"*65)
-    print("  STEP 5 / 6  Generating plots …")
-    print("─"*65)
-    plot_dashboard(df)
-    plot_error_heatmap(df)
-    plot_category_breakdown(df)
-    convergence_study("sin(x)")
-    convergence_study("e^(-x^2)")
- 
-    # ── Step 6: Demo recommendation ──────────────────────────────
-    print("\n" + "─"*65)
-    print("  STEP 6 / 6  Demo — Recommend method for a new integral")
-    print("─"*65)
-    print("\n  Query: 'I have a highly oscillatory, smooth function'")
-    recommend(["oscillatory", "smooth", "high_frequency"], pattern_dict)
- 
-    print("\n  Query: 'My function has an endpoint singularity'")
-    recommend(["endpoint_singularity", "singular"], pattern_dict)
- 
-    print("\n  Query: 'Sampled experimental data, smooth curve'")
-    recommend(["smooth", "no_singularity"], pattern_dict)
- 
-    print("\n  Query: 'Peaked Gaussian-like function'")
-    recommend(["peaked", "gaussian_shape"], pattern_dict)
- 
-    print("\n" + "="*65)
-    print("  ALL DONE.  Check integration_results.csv + *.png files.")
-    print("="*65)
-    return df, pattern_dict
- 
- 
+from sklearn.model_selection import train_test_split
+
+def main():
+    print("="*60)
+    print("  AI-GUIDED NUMERICAL INTEGRATION SELECTOR")
+    print("="*60)
+    
+    # 1. Benchmark & Extract Features
+    df = benchmark()
+    df.to_csv("results.csv", index=False)
+    print("✅ Benchmarks complete. Results saved to results.csv")
+    
+    # 2. Visualize Method Performance
+    method_names = list(METHODS.keys())
+    plot_dashboard(df, method_names)
+    
+    # 3. Train AI Model
+    print("\n🧠 Training AI to recognize function patterns...")
+    feature_cols = ["range_y", "mean_y", "std_y", "max_abs_y", "max_abs_dy",
+                    "max_abs_d2y", "max_abs_d4y", "oscillations",
+                    "endpoint_left_mag", "endpoint_right_mag", "spikiness", "interval_length"]
+    
+    X = df[feature_cols].fillna(0).values
+    y = df["best_method"].values
+    
+    # Check if we have enough data to split
+    if len(df) >= 5:
+        Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.3, random_state=42)
+        clf, _ = train_ai_model(df) # train_ai_model handles the split internally if modified, 
+                                    # but let's just use the direct approach here for visualization
+        
+        clf.fit(Xtr, ytr)
+        
+        # 4. Visualize AI Performance
+        print("\n📊 Generating AI visualizations...")
+        plot_ai_model_metrics(clf, Xte, yte, feature_cols)
+        
+        # 5. Demo AI Prediction
+        print("\n🎯 Demo: Asking AI to recommend a method for a sharp spike function:")
+        from feature_extractor import extract_features
+        import numpy as np
+        test_f = lambda x: 1/(1+1000*(x-0.7)**2)
+        feats = extract_features(test_f, 0, 1)
+        x_in = np.array([feats[c] for c in feature_cols]).reshape(1, -1)
+        prediction = clf.predict(x_in)[0]
+        print(f"   Function: Sharp spike at x=0.7")
+        print(f"   AI Recommendation: {prediction}")
+    else:
+        print("Not enough data to train AI model.")
+
+if __name__ == "__main__":
+    main()
