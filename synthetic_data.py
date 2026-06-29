@@ -1,4 +1,4 @@
-# synthetic_data.py
+
 import numpy as np
 import pandas as pd
 from scipy import integrate
@@ -53,7 +53,7 @@ def calculate_exact_mpmath(f_lambda, a, b):
     except:
         return np.nan
 
-def generate_synthetic_dataset(n_samples=80000):
+def generate_synthetic_dataset(n_samples=100000):
     print(f"Generating {n_samples} EXTREMELY COMPLEX SymPy functions...")
     data = []
     
@@ -148,5 +148,5 @@ def generate_synthetic_dataset(n_samples=80000):
         
     df = pd.DataFrame(data)
     df.to_csv("synthetic_dataset_80k_ultimate.csv", index=False)
-    print(f"✅ Saved {len(df)} ULTRA-COMPLEX cases to synthetic_dataset_80k_ultimate.csv")
+    print(f"✅ Saved {len(df)} ULTRA-COMPLEX cases to synthetic_dataset_100k_ultimate.csv")
     return df
