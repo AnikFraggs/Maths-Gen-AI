@@ -1,4 +1,4 @@
-
+# synthetic_data.py
 import numpy as np
 import pandas as pd
 from scipy import integrate
@@ -16,13 +16,11 @@ SAFE_DICT = {
 
 def generate_sympy_function(depth=3):
     """Generates deeply nested mathematical functions using SymPy."""
-    # Base atoms
     atoms = [x_sym, x_sym**2, sp.sin(x_sym), sp.cos(x_sym), sp.exp(x_sym), sp.log(x_sym), sp.sqrt(sp.Abs(x_sym))]
     
     expr = np.random.choice(atoms)
     ops = [sp.sin, sp.cos, sp.exp, sp.log, lambda y: y**2, lambda y: sp.sqrt(sp.Abs(y))]
     
-    # Nest operations deeply
     for _ in range(depth):
         op = np.random.choice(ops)
         try:
@@ -30,30 +28,28 @@ def generate_sympy_function(depth=3):
         except:
             pass
             
-    # Multiply by another random base function to create composites
     expr2 = np.random.choice(atoms)
     expr = expr * expr2
     
-    # Add a rational / singular component sometimes
     if np.random.rand() > 0.6:
         c = np.random.uniform(0.1, 2.0)
         expr = expr / (x_sym**2 + c)
         
     return expr
 
-def calculate_exact_mpmath(f_lambda, a, b):
+def calculate_exact_mpmath(f_mp, a, b):
     """Uses mpmath for arbitrary-precision quadrature (The Ultimate Calculator)."""
     try:
-        # 15 decimal places of precision
         mpmath.mp.dps = 15
-        val = mpmath.quad(f_lambda, [a, b], error=True, maxdegree=9)
-        if np.isfinite(float(val[0])) and abs(float(val[0])) < 1e6:
-            return float(val[0])
+        val = mpmath.quad(f_mp, [a, b], maxdegree=9)
+        val = float(val)
+        if np.isfinite(val) and abs(val) < 1e6:
+            return val
         return np.nan
     except:
         return np.nan
 
-def generate_synthetic_dataset(n_samples=100000):
+def generate_synthetic_dataset(n_samples=80000):
     print(f"Generating {n_samples} EXTREMELY COMPLEX SymPy functions...")
     data = []
     
@@ -61,21 +57,25 @@ def generate_synthetic_dataset(n_samples=100000):
         # 1. Generate Symbolic Function
         expr = generate_sympy_function(depth=np.random.randint(2, 5))
         
-        # 2. Convert to Numpy function
+        # 2. Convert to Numpy function (for features) and Mpmath function (for exact calc)
         try:
-            f = sp.lambdify(x_sym, expr, modules=[SAFE_DICT, "numpy"])
+            f_np = sp.lambdify(x_sym, expr, modules=[SAFE_DICT, "numpy"])
+            f_mp = sp.lambdify(x_sym, expr, modules="mpmath")
         except:
             continue
             
-        # 3. Generate bounds (some wide, some near 0 for singularities)
+        # 3. Generate bounds (FIXED: generating single floats, not arrays)
         if np.random.rand() > 0.7:
-            a, b = 0.0, np.random.uniform(0.5, 3.0)
+            a = 0.0
+            b = float(np.random.uniform(0.5, 3.0))
         else:
-            a, b = np.random.uniform(-3, 0, 2), np.random.uniform(0, 3, 2)
-            if a > b: a, b = b, a
+            a = float(np.random.uniform(-3, 0))
+            b = float(np.random.uniform(0, 3))
+            if a > b: 
+                a, b = b, a
             
         # 4. Calculate EXACT calculator value using mpmath
-        exact = calculate_exact_mpmath(f, a, b)
+        exact = calculate_exact_mpmath(f_mp, a, b)
         if np.isnan(exact):
             continue
             
@@ -83,7 +83,7 @@ def generate_synthetic_dataset(n_samples=100000):
         try:
             samples = 256
             xx = np.linspace(a + 1e-9, b - 1e-9, samples)
-            yy = np.vectorize(f)(xx)
+            yy = np.vectorize(f_np)(xx)
             yy = np.nan_to_num(yy, nan=0.0, posinf=1e5, neginf=-1e5)
             
             # FFT to find dominant frequency
@@ -123,13 +123,13 @@ def generate_synthetic_dataset(n_samples=100000):
         for mname, mfunc in METHODS.items():
             try:
                 if mname in ["Romberg", "Adaptive Simpson"]:
-                    val = mfunc(f, a, b)
+                    val = mfunc(f_np, a, b)
                 elif mname == "Tanh-Sinh":
-                    val = mfunc(f, a, b, h=0.02) # Ultra-fine step
+                    val = mfunc(f_np, a, b, h=0.02) # Ultra-fine step
                 elif mname == "Bayesian QD":
-                    val = mfunc(f, a, b, n=50)   # More GP points
+                    val = mfunc(f_np, a, b, n=50)   # More GP points
                 else:
-                    val = mfunc(f, a, b, n=2000) # Max resolution for grid methods
+                    val = mfunc(f_np, a, b, n=2000) # Max resolution for grid methods
                     
                 err = abs(val - exact) / (abs(exact) + 1e-12)
                 method_errors[mname] = err
