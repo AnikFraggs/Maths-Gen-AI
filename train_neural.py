@@ -126,6 +126,11 @@ def run_neural_pipeline():
     plt.savefig("ai_vs_calculator_loss_ultimate.png", dpi=150)
     plt.show()
     print("✅ Saved ultimate evaluation graphs!")
+import joblib
+joblib.dump(clf, 'ai_model.pkl')
+joblib.dump(scaler, 'scaler.pkl')
+print("✅ Saved AI model to ai_model.pkl and scaler.pkl for web app use!")
+
 
 if __name__ == "__main__":
     run_neural_pipeline()
